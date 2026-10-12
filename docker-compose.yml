@@ -1,0 +1,47 @@
+services:
+  ofelia:
+    image: mcuadros/ofelia:latest
+    container_name: ofelia_scheduler
+    depends_on:
+      - etl_worker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: daemon --docker
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+        reservations:
+          memory: 25M
+
+  etl_worker:
+    image: python-etl-worker:latest
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY weather.py .
+        CMD ["tail", "-f", "/dev/null"]
+    container_name: python_etl_worker
+    restart: unless-stopped
+    # 1. Maps the hostname 'host.docker.internal' to your local host IP address
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./weather.py:/app/weather.py:ro
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+        reservations:
+          memory: 25M
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.weather_etl.schedule: "@weekly"
+      ofelia.job-exec.weather_etl.command: "python weather.py"
+
+
